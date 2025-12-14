@@ -32,7 +32,7 @@ public class EmptyController : MonoBehaviour
         bc2d = GetComponent<BoxCollider2D>();
         if (bc2d != null && LevelController.Instance != null)
         {
-            bc2d.size = LevelController.Instance.cellSize;
+            bc2d.size = LevelController.Instance.moduleSize;
             bc2d.isTrigger = true;
         }
         SnapIfManual();

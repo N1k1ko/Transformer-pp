@@ -95,8 +95,8 @@ public class BlockController : MonoBehaviour
         if (bc2d == null) bc2d = GetComponent<BoxCollider2D>();
         if (bc2d != null && LevelController.Instance != null)
         {
-            bc2d.size = new Vector2(sizeInCells.x * LevelController.Instance.cellSize.x,
-                                     sizeInCells.y * LevelController.Instance.cellSize.y);
+            bc2d.size = new Vector2(sizeInCells.x * LevelController.Instance.moduleSize.x,
+                                     sizeInCells.y * LevelController.Instance.moduleSize.y);
         }
     }
 
