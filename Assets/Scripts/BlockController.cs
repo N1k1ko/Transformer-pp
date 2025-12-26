@@ -1,11 +1,14 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq; // Нужен для сортировки слотов по дистанции
+using static Unity.Burst.Intrinsics.X86.Avx;
+
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
-[SelectionBase] // <--- 1. Теперь при клике на спрайт будет выделяться сам Блок
+[SelectionBase]
 [ExecuteAlways]
 [RequireComponent(typeof(BoxCollider2D))]
 [DisallowMultipleComponent]
@@ -41,9 +44,13 @@ public class BlockController : MonoBehaviour
     private Rigidbody2D rb2D;
     private Vector3 lastPosition;
 
-    // Переменные для перетаскивания
+    // Переменные для перетаскивания и логики возврата
     private bool isDragging = false;
     private Vector3 dragOffset;
+    private Vector3 startDragPosition; // <--- Где блок был до начала перетаскивания
+
+    // Список слотов, с которыми мы сейчас соприкасаемся
+    private List<EmptyController> overlappingSlots = new List<EmptyController>();
     #endregion
 
     #region Unity Lifecycle
@@ -61,7 +68,7 @@ public class BlockController : MonoBehaviour
 
     private void Update()
     {
-        // 1. ЛОГИКА В РЕДАКТОРЕ
+        // 1. ЛОГИКА В РЕДАКТОРЕ (Без изменений: прилипаем к сетке)
         if (!Application.isPlaying)
         {
             if (transform.position != lastPosition && !useManualGridPosition)
@@ -71,10 +78,8 @@ public class BlockController : MonoBehaviour
 
             if (autoSizeToContent) ResizeSizeInCellsToFitContent();
 
-            SnapToGrid();
+            SnapToGridEditor(); // Используем упрощенную логику для редактора
             ResizeCollider();
-
-            // <--- 2. Жестко держим структуру в центре
             EnforceStructurePosition();
         }
         // 2. ЛОГИКА В ИГРЕ (PLAY MODE)
@@ -84,10 +89,7 @@ public class BlockController : MonoBehaviour
             {
                 DragBlock();
             }
-            else
-            {
-                SnapToGrid();
-            }
+            // Если не тащим, ничего не делаем, блок стоит там, куда его поставили
         }
     }
 
@@ -100,41 +102,25 @@ public class BlockController : MonoBehaviour
         if (autoSizeToContent) ResizeSizeInCellsToFitContent();
 
         ResizeCollider();
-        SnapToGrid();
+        SnapToGridEditor();
         EnforceStructurePosition();
     }
     #endregion
 
-    #region Position Locking (NEW)
-
-    // Этот метод принудительно ставит визуал в ноль
-    private void EnforceStructurePosition()
-    {
-        if (structuresRoot != null)
-        {
-            // Возвращаем контейнер структур в центр блока
-            if (structuresRoot.localPosition != Vector3.zero)
-                structuresRoot.localPosition = Vector3.zero;
-
-            // Возвращаем каждую структуру в центр контейнера
-            foreach (var st in structures)
-            {
-                if (st != null && st.transform.localPosition != Vector3.zero)
-                {
-                    st.transform.localPosition = Vector3.zero;
-                }
-            }
-        }
-    }
-    #endregion
-
-    #region Drag & Drop Logic
+    #region Interaction & Logic (NEW)
 
     private void OnMouseDown()
     {
         if (!Application.isPlaying) return;
 
         isDragging = true;
+
+        // 1. Запоминаем, где стояли, чтобы вернуться в случае неудачи
+        startDragPosition = transform.position;
+
+        // Очищаем список слотов перед началом нового движения
+        overlappingSlots.Clear();
+
         Vector3 mousePos = GetMouseWorldPos();
         dragOffset = transform.position - mousePos;
     }
@@ -144,8 +130,78 @@ public class BlockController : MonoBehaviour
         if (!Application.isPlaying) return;
 
         isDragging = false;
-        UpdateGridPositionFromWorld();
-        SnapToGrid();
+
+        // ЛОГИКА ПРИЛИПАНИЯ К СЛОТУ
+        EmptyController bestSlot = GetNearestValidSlot();
+
+        if (bestSlot != null)
+        {
+            // Слот найден! Прилипаем к нему
+            transform.position = bestSlot.transform.position;
+
+            // Обновляем нашу внутреннюю координату сетки, чтобы она совпадала со слотом
+            gridPosition = bestSlot.gridPosition;
+
+            Debug.Log($"<color=green>[SUCCESS]</color> Block snapped to Slot {bestSlot.name}");
+        }
+        else
+        {
+            // Слот не найден! Возвращаемся домой
+            transform.position = startDragPosition;
+            Debug.Log($"<color=yellow>[RETURN]</color> No valid slot found. Returning to start.");
+        }
+    }
+
+    // Ищем ближайший слот из тех, с которыми соприкасаемся
+    private EmptyController GetNearestValidSlot()
+    {
+        // Удаляем null (если слот был уничтожен)
+        overlappingSlots.RemoveAll(s => s == null);
+
+        if (overlappingSlots.Count == 0) return null;
+
+        EmptyController nearest = null;
+        float minDistance = float.MaxValue;
+
+        foreach (var slot in overlappingSlots)
+        {
+            float dist = Vector3.Distance(transform.position, slot.transform.position);
+            if (dist < minDistance)
+            {
+                minDistance = dist;
+                nearest = slot;
+            }
+        }
+        return nearest;
+    }
+
+    // Входим в триггер слота
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        var slot = other.GetComponent<EmptyController>();
+        if (slot != null)
+        {
+            if (!overlappingSlots.Contains(slot))
+            {
+                overlappingSlots.Add(slot);
+
+                // --- ЛОГ СООБЩЕНИЯ ---
+                Debug.Log($"[INTERACTION] Block: <b>{this.hashIndex}</b> <--> Slot: <b>{slot.hashIndex}</b>");
+            }
+        }
+    }
+
+    // Выходим из триггера слота
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        var slot = other.GetComponent<EmptyController>();
+        if (slot != null)
+        {
+            if (overlappingSlots.Contains(slot))
+            {
+                overlappingSlots.Remove(slot);
+            }
+        }
     }
 
     private void DragBlock()
@@ -185,7 +241,7 @@ public class BlockController : MonoBehaviour
         ApplyStructureVisibility();
         if (autoSizeToContent) ResizeSizeInCellsToFitContent();
         ResizeCollider();
-        SnapToGrid();
+        SnapToGridEditor();
         EnforceStructurePosition();
     }
 
@@ -197,7 +253,20 @@ public class BlockController : MonoBehaviour
         if (collider2D.size != finalSize) collider2D.size = finalSize;
     }
 
-    private void SnapToGrid()
+    private void EnforceStructurePosition()
+    {
+        if (structuresRoot != null)
+        {
+            if (structuresRoot.localPosition != Vector3.zero) structuresRoot.localPosition = Vector3.zero;
+            foreach (var st in structures)
+            {
+                if (st != null && st.transform.localPosition != Vector3.zero) st.transform.localPosition = Vector3.zero;
+            }
+        }
+    }
+
+    // Логика прилипания ТОЛЬКО для редактора
+    private void SnapToGridEditor()
     {
         if (LevelController.Instance == null) return;
 
@@ -211,13 +280,10 @@ public class BlockController : MonoBehaviour
                             new Vector2(gridPosition.x * modSize.x, gridPosition.y * modSize.y) +
                             new Vector2(halfBlockWidth, halfBlockHeight);
 
-        if (!isDragging)
+        if (Vector3.Distance(transform.position, targetPos) > 0.001f)
         {
-            if (Vector3.Distance(transform.position, targetPos) > 0.001f)
-            {
-                transform.position = new Vector3(targetPos.x, targetPos.y, transform.position.z);
-                lastPosition = transform.position;
-            }
+            transform.position = new Vector3(targetPos.x, targetPos.y, transform.position.z);
+            lastPosition = transform.position;
         }
     }
 
@@ -230,8 +296,10 @@ public class BlockController : MonoBehaviour
         float halfBlockHeight = (sizeInCells.y * modSize.y) * 0.5f;
 
         Vector2 bottomLeftCorner = (Vector2)transform.position - new Vector2(halfBlockWidth, halfBlockHeight);
-
+        var tmp = gridPosition;
         gridPosition = LevelController.Instance.WorldToGrid(bottomLeftCorner);
+        if (Vector2.Distance(tmp, gridPosition) > 0.01f)
+            EditorUtility.SetDirty(this);
     }
 
     #endregion
@@ -292,14 +360,10 @@ public class BlockController : MonoBehaviour
     [ContextMenu("Create Structure")]
     public void CreateStructure()
     {
-        if (structuresRoot == null)
-        {
-            Debug.LogWarning("StructuresRoot not assigned!");
-            return;
-        }
+        if (structuresRoot == null) return;
         GameObject newStruct = new GameObject($"Structure_{structures.Count}");
         newStruct.transform.SetParent(structuresRoot);
-        newStruct.transform.localPosition = Vector3.zero; // <--- При создании тоже ставим в ноль
+        newStruct.transform.localPosition = Vector3.zero;
         structures.Add(newStruct);
         selectedStructureIndex = structures.Count - 1;
         FullRefresh();
