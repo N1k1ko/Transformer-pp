@@ -1,146 +1,223 @@
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [ExecuteAlways]
 [DisallowMultipleComponent]
 public class LevelController : MonoBehaviour
 {
-    public static LevelController Instance { get; private set; }
+    // --- ИЗМЕНЕНИЕ ЗДЕСЬ: Ленивая инициализация ---
+    private static LevelController _instance;
+    public static LevelController Instance
+    {
+        get
+        {
+            // Если ссылка потерялась (после рекомпиляции), ищем объект на сцене
+            if (_instance == null)
+            {
+                _instance = FindObjectOfType<LevelController>();
+            }
+            return _instance;
+        }
+    }
+    // ----------------------------------------------
 
-#region Module settings
-    [Header("Module settings")]
-    [Tooltip("Physical size of ONE module (cell) in Unity units")]
+    [Header("Режим работы")]
+    public bool AutomaticGrid;
+    public bool showFrame = true;
+
+    [Header("Настройки Авто-сетки (по экрану)")]
+    [Min(1)] public int columns = 5;
+    [Min(1)] public int rows = 3;
+
+    #region Manual Module settings
+    [Header("Настройки Ручной сетки")]
     public Vector2 moduleSize = new Vector2(1f, 1f);
-#endregion
-
-#region Grid settings
-    [Header("Grid layout")]
-    [Tooltip("World position of grid origin (bottom-left corner)")]
     public Vector2 gridOrigin = Vector2.zero;
-
-    [Tooltip("Grid size in modules (columns X, rows Y)")]
     public Vector2Int gridSize = new Vector2Int(10, 10);
-#endregion
+    #endregion
 
-#region Grid visuals (Editor only)
-    [Header("Grid visuals (Editor only)")]
+    #region Grid visuals (Editor only)
+    [Header("Визуал (Только редактор)")]
     public Color lineColor = new Color(1f, 1f, 1f, 0.6f);
     public Color fillColor = new Color(1f, 1f, 1f, 0.05f);
-    [Range(0.01f, 0.2f)]
-    public float lineThickness = 0.05f;
+    [Range(1f, 10f)]
+    public float lineThickness = 2f;
+    #endregion
 
+    #region Singleton Logic
     private void Awake()
+    {
+        SetupSingleton();
+    }
+
+    // OnEnable вызывается Unity после каждой пересборки скриптов!
+    private void OnEnable()
+    {
+        SetupSingleton();
+    }
+
+    private void SetupSingleton()
     {
         if (Application.isPlaying)
         {
-            if (Instance != null && Instance != this)
+            if (_instance != null && _instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
-            Instance = this;
+            _instance = this;
         }
         else
         {
-            Instance = this;
+            // В режиме редактора просто обновляем ссылку
+            _instance = this;
         }
     }
-#endregion
+    #endregion
 
-#region Grid math
-    /// <summary>
-    /// Converts grid coordinates (col,row) to world position (cell center).
-    /// </summary>
+    #region Dynamic Properties
+    public Vector2 CurrentModuleSize
+    {
+        get
+        {
+            if (AutomaticGrid)
+            {
+                Camera cam = Camera.main;
+                if (cam == null) return moduleSize;
+
+                float camHeight = 2f * cam.orthographicSize;
+                float camWidth = camHeight * cam.aspect;
+                // Защита от деления на ноль при инициализации
+                if (columns == 0) columns = 1;
+                if (rows == 0) rows = 1;
+
+                return new Vector2(camWidth / columns, camHeight / rows);
+            }
+            return moduleSize;
+        }
+    }
+
+    public Vector2 CurrentGridOrigin
+    {
+        get
+        {
+            if (AutomaticGrid)
+            {
+                Camera cam = Camera.main;
+                if (cam == null) return gridOrigin;
+
+                float camHeight = 2f * cam.orthographicSize;
+                float camWidth = camHeight * cam.aspect;
+                Vector3 camBottomLeft = cam.transform.position - new Vector3(camWidth / 2f, camHeight / 2f, 0);
+                return (Vector2)camBottomLeft;
+            }
+            return gridOrigin;
+        }
+    }
+
+    public Vector2Int CurrentGridSize
+    {
+        get
+        {
+            if (AutomaticGrid) return new Vector2Int(columns, rows);
+            return gridSize;
+        }
+    }
+    #endregion
+
+    #region Grid math
     public Vector2 GridToWorld(Vector2Int gridCoords)
     {
-        return gridOrigin +
+        return CurrentGridOrigin +
                new Vector2(
-                   (gridCoords.x + 0.5f) * moduleSize.x,
-                   (gridCoords.y + 0.5f) * moduleSize.y
+                   (gridCoords.x + 0.5f) * CurrentModuleSize.x,
+                   (gridCoords.y + 0.5f) * CurrentModuleSize.y
                );
     }
 
-    /// <summary>
-    /// Snaps any world position to nearest module center.
-    /// </summary>
     public Vector2 SnapToGrid(Vector2 worldPos)
     {
-        Vector2 local = worldPos - gridOrigin;
+        Vector2 local = worldPos - CurrentGridOrigin;
+        Vector2 size = CurrentModuleSize;
+        Vector2Int dim = CurrentGridSize;
 
-        int col = Mathf.RoundToInt(local.x / moduleSize.x);
-        int row = Mathf.RoundToInt(local.y / moduleSize.y);
+        if (size.x <= 0.0001f || size.y <= 0.0001f) return worldPos;
 
-        col = Mathf.Clamp(col, 0, gridSize.x - 1);
-        row = Mathf.Clamp(row, 0, gridSize.y - 1);
+        int col = Mathf.FloorToInt(local.x / size.x);
+        int row = Mathf.FloorToInt(local.y / size.y);
 
-        return GridToWorld(new Vector2Int(col, row));
+        col = Mathf.Clamp(col, 0, dim.x - 1);
+        row = Mathf.Clamp(row, 0, dim.y - 1);
+
+        return CurrentGridOrigin + new Vector2((col + 0.5f) * size.x, (row + 0.5f) * size.y);
     }
 
-    /// <summary>
-    /// Returns grid coordinates from world position.
-    /// </summary>
     public Vector2Int WorldToGrid(Vector2 worldPos)
     {
-        Vector2 local = worldPos - gridOrigin;
+        Vector2 local = worldPos - CurrentGridOrigin;
+        Vector2 size = CurrentModuleSize;
 
-        int col = Mathf.FloorToInt(local.x / moduleSize.x);
-        int row = Mathf.FloorToInt(local.y / moduleSize.y);
+        if (size.x <= 0.0001f || size.y <= 0.0001f) return Vector2Int.zero;
+
+        int col = Mathf.FloorToInt(local.x / size.x);
+        int row = Mathf.FloorToInt(local.y / size.y);
 
         return new Vector2Int(col, row);
     }
-#endregion
+    #endregion
 
-#region Editor grid drawing
+    #region Editor grid drawing
     private void OnDrawGizmos()
     {
-        if (Application.isPlaying) return;
-
-        DrawGrid();
-    }
-
-    private void DrawGrid()
-    {
-        Vector2 totalSize = new Vector2(
-            gridSize.x * moduleSize.x,
-            gridSize.y * moduleSize.y
-        );
-
-        // Fill
-        Gizmos.color = fillColor;
-        Gizmos.DrawCube(
-            gridOrigin + totalSize / 2f,
-            new Vector3(totalSize.x, totalSize.y, 0.01f)
-        );
-
-        // Lines
-        Gizmos.color = lineColor;
-
-        for (int x = 0; x <= gridSize.x; x++)
+#if UNITY_EDITOR
+        // ВАЖНО: Принудительная перерисовка сцены, если что-то изменилось
+        // Это помогает Gizmos обновляться плавно
+        if (!Application.isPlaying)
         {
-            Vector3 from = gridOrigin + new Vector2(x * moduleSize.x, 0);
-            Vector3 to   = gridOrigin + new Vector2(x * moduleSize.x, totalSize.y);
-            DrawThickLine(from, to, lineThickness);
+            // Иногда полезно, но может нагружать процессор. 
+            // Оставьте закомментированным, если тормозит.
+            // EditorUtility.SetDirty(this); 
         }
 
-        for (int y = 0; y <= gridSize.y; y++)
+        Vector2 origin = CurrentGridOrigin;
+        Vector2 modSize = CurrentModuleSize;
+        Vector2Int dim = CurrentGridSize;
+
+        Vector2 totalSize = new Vector2(dim.x * modSize.x, dim.y * modSize.y);
+
+        if (!AutomaticGrid)
         {
-            Vector3 from = gridOrigin + new Vector2(0, y * moduleSize.y);
-            Vector3 to   = gridOrigin + new Vector2(totalSize.x, y * moduleSize.y);
-            DrawThickLine(from, to, lineThickness);
+            Gizmos.color = fillColor;
+            Gizmos.DrawCube(origin + totalSize / 2f, new Vector3(totalSize.x, totalSize.y, 1f));
         }
+
+        Handles.color = lineColor;
+        float zPos = 0f;
+
+        int startX = showFrame ? 0 : 1;
+        int endX = showFrame ? dim.x : dim.x - 1;
+
+        for (int i = startX; i <= endX; i++)
+        {
+            float xPos = origin.x + (i * modSize.x);
+            Vector3 p1 = new Vector3(xPos, origin.y, zPos);
+            Vector3 p2 = new Vector3(xPos, origin.y + totalSize.y, zPos);
+            Handles.DrawAAPolyLine(lineThickness, p1, p2);
+        }
+
+        int startY = showFrame ? 0 : 1;
+        int endY = showFrame ? dim.y : dim.y - 1;
+
+        for (int j = startY; j <= endY; j++)
+        {
+            float yPos = origin.y + (j * modSize.y);
+            Vector3 p1 = new Vector3(origin.x, yPos, zPos);
+            Vector3 p2 = new Vector3(origin.x + totalSize.x, yPos, zPos);
+            Handles.DrawAAPolyLine(lineThickness, p1, p2);
+        }
+#endif
     }
-
-    private void DrawThickLine(Vector3 a, Vector3 b, float thickness)
-    {
-        Vector3 center = (a + b) * 0.5f;
-        float length = Vector3.Distance(a, b);
-
-        bool vertical = Mathf.Abs(a.x - b.x) < 0.001f;
-
-        Vector3 size = vertical
-            ? new Vector3(thickness, length, 0.01f)
-            : new Vector3(length, thickness, 0.01f);
-
-        Gizmos.DrawCube(center, size);
-    }
-#endregion
+    #endregion
 }
