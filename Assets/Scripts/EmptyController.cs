@@ -21,6 +21,10 @@ public class EmptyController : MonoBehaviour
     private SpriteRenderer spriteRenderer;
     private Vector3 lastPosition;
 
+    public bool IsOccupied { get; private set; }
+
+    public BlockController linkedBlock { get; private set; }
+
     private void Awake() => Initialize();
     private void OnEnable() { Initialize(); FullRefresh(); }
 
@@ -127,5 +131,21 @@ public class EmptyController : MonoBehaviour
         if(Vector2.Distance(tmp, gridPosition) > 0.01f)
             EditorUtility.SetDirty(this);
     }
+
+    public void Occupy(BlockController block)
+    {
+        if(IsOccupied) return;
+        LevelController.Instance.Verify();
+        IsOccupied = true;
+        linkedBlock = block;
+    }
+
+    public void Deoccupy()
+    {
+        IsOccupied = false;
+        linkedBlock = null;
+    }
+
+
     #endregion
 }
