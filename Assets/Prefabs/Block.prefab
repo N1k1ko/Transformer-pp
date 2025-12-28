@@ -28,7 +28,7 @@ Transform:
   m_GameObject: {fileID: 538149652386144788}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.5, y: 0.5, z: 0}
+  m_LocalPosition: {x: -12.338691, y: -4, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -79,7 +79,7 @@ BoxCollider2D:
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 1, y: 2}
+  m_Size: {x: 1.2988095, y: 2}
   m_EdgeRadius: 0
 --- !u!50 &66479646244964517
 Rigidbody2D:
@@ -122,8 +122,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hashIndex: '#9513'
   structuresRoot: {fileID: 1443228665135283226}
-  selectedStructureIndex: -1
+  selectedStructureIndex: 0
   structures: []
+  autoSizeToContent: 1
   sizeInCells: {x: 1, y: 2}
   useManualGridPosition: 1
   gridPosition: {x: 0, y: 0}

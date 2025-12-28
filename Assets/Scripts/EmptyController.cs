@@ -1,4 +1,6 @@
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 
 [ExecuteAlways]
@@ -28,12 +30,14 @@ public class EmptyController : MonoBehaviour
     {
         if (!Application.isPlaying)
         {
+            #if UNITY_EDITOR 
             if (Vector3.Distance(transform.position, lastPosition) > 0.001f && !useManualGridPosition)
-                UpdateGridPositionFromWorld();
+                UpdateGridPositionFromWorld(); //TODO refactoring: вынести в общий базовый класс из-за ошибок с билдом
 
             SnapToGrid();
             ResizeVisuals();
             ResizeCollider();
+            #endif
         }
     }
 
@@ -114,7 +118,7 @@ public class EmptyController : MonoBehaviour
             lastPosition = transform.position;
         }
     }
-
+    #if UNITY_EDITOR //TODO refactoring: вынести в общий базовый класс из-за ошибок с билдом
     private void UpdateGridPositionFromWorld()
     {
         if (LevelController.Instance == null) return;
@@ -127,5 +131,6 @@ public class EmptyController : MonoBehaviour
         if(Vector2.Distance(tmp, gridPosition) > 0.01f)
             EditorUtility.SetDirty(this);
     }
+    #endif
     #endregion
 }
