@@ -84,12 +84,12 @@ public class BlockController : MonoBehaviour
     {
         if (isPaletteItem)
         {
-            rb2D.simulated = false; // Отключаем физику
+            //rb2D.simulated = false; // Отключаем физику
             return;
         }
         else
         {
-            rb2D.simulated = true;
+            //rb2D.simulated = true;
         }
         // 1. ЛОГИКА В РЕДАКТОРЕ (Без изменений: прилипаем к сетке)
         if (!Application.isPlaying)
@@ -138,6 +138,9 @@ public class BlockController : MonoBehaviour
 
     private void OnMouseDown()
     {
+
+
+
         if (!Application.isPlaying) return;
 
         if (isPaletteItem)
@@ -145,10 +148,10 @@ public class BlockController : MonoBehaviour
             // 1. Превращаемся в обычный блок
             isPaletteItem = false;
 
-            // 2. Говорим палитре, что мы ушли, чтобы она родила новый блок на нашем месте
             if (myPalette != null)
             {
-                myPalette.OnBlockRemoved(myPaletteSlotIndex);
+                // Говорим палитре: "Удали меня из списка инвентаря"
+                myPalette.OnBlockTakenFromPalette(this);
             }
 
             // 3. Отключаем привязку к родителю (чтобы не двигаться за камерой/палитрой)
@@ -175,20 +178,48 @@ public class BlockController : MonoBehaviour
         isPaletteItem = true;
         myPalette = palette;
         myPaletteSlotIndex = slotIndex;
+        //transform.localPosition = transform.localPosition + new Vector3(0, 0, 1);
 
         // Отключаем физику и триггеры, чтобы блок в меню не взаимодействовал с миром
-        if (collider2D) collider2D.enabled = true; // Коллайдер нужен для клика мышкой!
-        if (rb2D) rb2D.simulated = false;
+         // Коллайдер нужен для клика мышкой!
+        //if (rb2D) rb2D.simulated = false;
+        //if (collider2D) collider2D.enabled = true;
 
         // Можно сделать его чуть меньше для красоты
-        // transform.localScale = Vector3.one * 0.8f; 
+        //transform.localScale = Vector3.one * 0.5f; 
     }
 
+    private BlockPalette CheckForPaletteDrop()
+    {
+        // Проверяем точку под центром блока или под мышкой
+        Collider2D[] hits = Physics2D.OverlapPointAll(transform.position);
+
+        foreach (var hit in hits)
+        {
+            // Пытаемся найти компонент палитры на том, во что врезались
+            BlockPalette palette = hit.GetComponent<BlockPalette>();
+            if (palette != null) return palette;
+        }
+        return null;
+    }
     private void OnMouseUp()
     {
         if (!Application.isPlaying) return;
 
         isDragging = false;
+        BlockPalette palette = CheckForPaletteDrop();
+        if (palette != null)
+        {
+            if (linkedSlot != null)
+            {
+                linkedSlot.Deoccupy();
+                linkedSlot = null;
+            }
+
+            Debug.Log($"<color=cyan>[RETURN]</color> Returning to palette.");
+            palette.ReturnBlockToPalette(this);
+            return; // Прерываем выполнение, блок ушел в палитру
+        }
 
         // ЛОГИКА ПРИЛИПАНИЯ К СЛОТУ
         EmptyController bestSlot = GetNearestValidSlot();
@@ -212,6 +243,12 @@ public class BlockController : MonoBehaviour
             // Слот не найден! Возвращаемся домой
             transform.position = startDragPosition;
             Debug.Log($"<color=yellow>[RETURN]</color> No valid slot found. Returning to start.");
+
+            if (linkedSlot == null)
+            {
+                Debug.Log($"<color=cyan>[RETURN]</color> Returning to palette.");
+                BlockPalette.Instance.ReturnBlockToPalette(this);
+            }
         }
     }
 
