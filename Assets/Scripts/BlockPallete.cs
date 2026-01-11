@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using TMPro;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(SpriteRenderer))]
 [RequireComponent(typeof(BoxCollider2D))] // <-- Нужен для обнаружения возврата блока
@@ -15,12 +16,18 @@ public class BlockPalette : MonoBehaviour
     public Sprite backgroundSprite;
     public int sortingOrder = 50;
 
+    public RectTransform uiCanvasRect;
+
     [Header("Layout Settings")]
     [Min(1)] public int visibleSlotsCount = 5;
     [Range(0f, 2f)] public float sidePadding = 0.5f;
 
     [Header("State")]
     public int currentStartIndex = 0;
+
+    [Header("UI")]
+    public Button LeftArrowButton;
+    public Button RightArrowButton;
 
     // --- НОВОЕ: Динамический инвентарь (реальные объекты) ---
     // Мы храним здесь либо префабы, либо уже существующие инстансы, которые "спрятаны"
@@ -65,6 +72,14 @@ public class BlockPalette : MonoBehaviour
         UpdateVisualsAndCollider();
         GenerateSlotPositions();
 
+        if (LeftArrowButton != null)
+        {
+            
+            LeftArrowButton.onClick.AddListener(ScrollLeft);
+        }
+        if (RightArrowButton != null)
+            RightArrowButton.onClick.AddListener(ScrollRight);
+
         visibleBlocks = new BlockController[visibleSlotsCount];
         RefreshPalette();
     }
@@ -73,6 +88,9 @@ public class BlockPalette : MonoBehaviour
     private void CreateHiddenInventoryItem(GameObject prefab)
     {
         GameObject newObj = Instantiate(prefab, transform);
+
+        //newObj.transform.SetParent(transform.parent, false);
+
         BlockController bc = newObj.GetComponent<BlockController>();
 
         // Сразу настраиваем как элемент палитры
@@ -89,13 +107,32 @@ public class BlockPalette : MonoBehaviour
 
         if (backgroundSprite != null) sr.sprite = backgroundSprite;
         sr.color = backgroundColor;
-        sr.drawMode = SpriteDrawMode.Sliced;
+        sr.drawMode = SpriteDrawMode.Tiled;
         sr.size = paletteSize;
         sr.sortingOrder = sortingOrder;
 
         // Настраиваем коллайдер под размер фона (чтобы ловить блоки)
         boxCollider.size = paletteSize;
         boxCollider.isTrigger = true; // Важно! Чтобы не толкаться
+
+        if (uiCanvasRect != null)
+        {
+            // Берем текущий Scale канваса (который вы настроили, например 0.02)
+            float currentScaleX = uiCanvasRect.localScale.x;
+            float currentScaleY = uiCanvasRect.localScale.y;
+
+            // Чтобы Канвас был размером с Палитру (в юнитах), 
+            // его пиксельный размер должен быть: РазмерВЮнитах / Скейл
+            // Например: 8 юнитов / 0.02 скейл = 400 пикселей ширины
+
+            float width = paletteSize.x / currentScaleX;
+            float height = paletteSize.y / currentScaleY;
+
+            uiCanvasRect.sizeDelta = new Vector2(width, height);
+
+            // Центрируем
+            uiCanvasRect.localPosition = Vector3.zero;
+        }
     }
 
     private void GenerateSlotPositions()

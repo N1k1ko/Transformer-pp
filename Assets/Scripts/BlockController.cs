@@ -140,7 +140,7 @@ public class BlockController : MonoBehaviour
 
     private void OnMouseDown()
     {
-
+        Debug.Log($"<color=cyan>[RETURN]</color> Mouse Down.");
 
 
         if (!Application.isPlaying) return;
@@ -153,11 +153,12 @@ public class BlockController : MonoBehaviour
             if (myPalette != null)
             {
                 // Говорим палитре: "Удали меня из списка инвентаря"
+                transform.SetParent(myPalette.transform.parent);
                 myPalette.OnBlockTakenFromPalette(this);
             }
 
             // 3. Отключаем привязку к родителю (чтобы не двигаться за камерой/палитрой)
-            transform.SetParent(null);
+            
 
             // 4. Сбрасываем масштаб (если в палитре он был уменьшен)
             transform.localScale = Vector3.one;
@@ -226,14 +227,14 @@ public class BlockController : MonoBehaviour
         // ЛОГИКА ПРИЛИПАНИЯ К СЛОТУ
         EmptyController bestSlot = GetNearestValidSlot();
 
-        if (bestSlot != null && bestSlot.sizeInCells.Equals(sizeInCells) && !bestSlot.IsOccupied)
+        if (bestSlot != null /*&& bestSlot.sizeInCells.Equals(sizeInCells)*/ && !bestSlot.IsOccupied)
         {
             if (linkedSlot != null)
                 linkedSlot.Deoccupy();
             bestSlot.Occupy(this);
             linkedSlot = bestSlot;
             // Слот найден! Прилипаем к нему
-            transform.position = bestSlot.transform.position;
+            transform.position = new Vector3(bestSlot.transform.position.x, bestSlot.transform.position.y, transform.position.z);
 
             // Обновляем нашу внутреннюю координату сетки, чтобы она совпадала со слотом
             gridPosition = bestSlot.gridPosition;

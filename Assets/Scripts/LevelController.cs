@@ -1,4 +1,7 @@
 using UnityEngine;
+using System.Collections.Generic;
+using UnityEngine.UI;
+
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -46,11 +49,25 @@ public class LevelController : MonoBehaviour
     public float lineThickness = 2f;
     #endregion
 
+    [Header("Уровни")]
+    public List<GameObject> Levels;
+    public Button VerifyButton;
+    public Button SwitchLevelButton;
+    public int currentlevel = 0;
+
     #region Singleton Logic
     private void Awake()
     {
         SetupSingleton();
+
+        VerifyButton.onClick.AddListener(VerifyForButton);
+        SwitchLevelButton.onClick.AddListener(SwitchLevel);
+        SwitchLevelButton.gameObject.SetActive(false);
     }
+
+
+
+
 
     // OnEnable вызывается Unity после каждой пересборки скриптов!
     private void OnEnable()
@@ -221,6 +238,22 @@ public class LevelController : MonoBehaviour
     }
     #endregion
 
+
+    public void SwitchLevel()
+    {
+        SwitchLevelButton.gameObject.SetActive(false);
+
+        Levels[currentlevel].SetActive(false);
+        currentlevel++;
+        if(currentlevel < Levels.Count)
+            Levels[currentlevel].SetActive(true);
+
+    }
+    public void VerifyForButton()
+    {
+        if(Verify())
+            SwitchLevelButton.gameObject.SetActive(true);
+    }
     public bool Verify()
     {
         var result = true;
@@ -229,6 +262,8 @@ public class LevelController : MonoBehaviour
         var tmp = FindObjectsByType<EmptyController>(FindObjectsSortMode.None);
 
         foreach (var e in tmp) {
+            if (!e.isActiveAndEnabled)
+                continue;
             if (e.hashIndex == "")
                 continue;
             if (!e.IsOccupied || !e.hashIndex.Equals(e.linkedBlock.hashIndex))
@@ -241,7 +276,5 @@ public class LevelController : MonoBehaviour
         return result;
 
     }
-
-
 
 }
