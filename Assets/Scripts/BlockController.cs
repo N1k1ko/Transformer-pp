@@ -94,9 +94,10 @@ public class BlockController : MonoBehaviour
         // 1. ЛОГИКА В РЕДАКТОРЕ (Без изменений: прилипаем к сетке)
         if (!Application.isPlaying)
         {
+            #if UNITY_EDITOR 
             if (transform.position != lastPosition && !useManualGridPosition)
             {
-                UpdateGridPositionFromWorld();
+                UpdateGridPositionFromWorld(); //TODO refactoring: вынести в общий базовый класс из-за ошибок с билдом
             }
 
             if (autoSizeToContent) ResizeSizeInCellsToFitContent();
@@ -104,6 +105,7 @@ public class BlockController : MonoBehaviour
             SnapToGridEditor(); // Используем упрощенную логику для редактора
             ResizeCollider();
             EnforceStructurePosition();
+            #endif
         }
         // 2. ЛОГИКА В ИГРЕ (PLAY MODE)
         else
@@ -390,7 +392,7 @@ public class BlockController : MonoBehaviour
             lastPosition = transform.position;
         }
     }
-
+    #if UNITY_EDITOR //TODO refactoring: вынести в общий базовый класс из-за ошибок с билдом
     private void UpdateGridPositionFromWorld()
     {
         if (LevelController.Instance == null) return;
@@ -405,6 +407,7 @@ public class BlockController : MonoBehaviour
         if (Vector2.Distance(tmp, gridPosition) > 0.01f)
             EditorUtility.SetDirty(this);
     }
+    #endif
 
     #endregion
 
