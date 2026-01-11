@@ -1,6 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq; // Нужен для сортировки слотов по дистанции
+using System.Linq; 
 using static Unity.Burst.Intrinsics.X86.Avx;
 using TMPro;
 
@@ -140,7 +140,7 @@ public class BlockController : MonoBehaviour
 
     private void OnMouseDown()
     {
-        Debug.Log($"<color=cyan>[RETURN]</color> Mouse Down.");
+        //Debug.Log($"<color=cyan>[RETURN]</color> Mouse Down.");
 
 
         if (!Application.isPlaying) return;
