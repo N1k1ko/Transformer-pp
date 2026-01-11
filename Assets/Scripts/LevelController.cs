@@ -220,4 +220,28 @@ public class LevelController : MonoBehaviour
 #endif
     }
     #endregion
+
+    public bool Verify()
+    {
+        var result = true;
+
+
+        var tmp = FindObjectsByType<EmptyController>(FindObjectsSortMode.None);
+
+        foreach (var e in tmp) {
+            if (e.hashIndex == "")
+                continue;
+            if (!e.IsOccupied || !e.hashIndex.Equals(e.linkedBlock.hashIndex))
+            {
+                result = false;
+                break;
+            }
+        }
+
+        return result;
+
+    }
+
+
+
 }

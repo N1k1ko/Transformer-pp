@@ -2,6 +2,8 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq; // Нужен для сортировки слотов по дистанции
 using static Unity.Burst.Intrinsics.X86.Avx;
+using TMPro;
+
 
 
 #if UNITY_EDITOR
@@ -29,7 +31,7 @@ public class BlockController : MonoBehaviour
     #region Grid & Size
     [Header("Grid Settings")]
     [Tooltip("Если ВКЛ - размер вычисляется по спрайтам.")]
-    public bool autoSizeToContent = true;
+    public bool autoSizeToContent = false;
 
     [Tooltip("Size of the block in grid cells")]
     public Vector2Int sizeInCells = new Vector2Int(1, 1);
@@ -37,6 +39,16 @@ public class BlockController : MonoBehaviour
     [Tooltip("If true, object snaps to 'Grid Position'.")]
     public bool useManualGridPosition;
     public Vector2Int gridPosition;
+
+    [Tooltip("Если ВКЛ - спрайты растягиваются под размер SizeInCells (работает, если выключен AutoSize).")]
+    public bool stretchSpriteToFit = false;
+
+    [Header("Palette State")]
+    public bool isPaletteItem = false; // Это блок в меню?
+    private BlockPalette myPalette;    // Ссылка на палитру
+    private int myPaletteSlotIndex;    // В каком слоте палитры мы сидели
+
+
     #endregion
 
     #region RunTime
@@ -51,6 +63,8 @@ public class BlockController : MonoBehaviour
 
     // Список слотов, с которыми мы сейчас соприкасаемся
     private List<EmptyController> overlappingSlots = new List<EmptyController>();
+
+    private EmptyController linkedSlot;
     #endregion
 
     #region Unity Lifecycle
@@ -68,6 +82,15 @@ public class BlockController : MonoBehaviour
 
     private void Update()
     {
+        if (isPaletteItem)
+        {
+            //rb2D.simulated = false; // Отключаем физику
+            return;
+        }
+        else
+        {
+            //rb2D.simulated = true;
+        }
         // 1. ЛОГИКА В РЕДАКТОРЕ (Без изменений: прилипаем к сетке)
         if (!Application.isPlaying)
         {
@@ -99,10 +122,14 @@ public class BlockController : MonoBehaviour
     {
         InitializeComponents();
         RefreshStructures();
-        ApplyStructureVisibility();
+        //ApplyStructureVisibility();
 
         if (autoSizeToContent) ResizeSizeInCellsToFitContent();
-
+        if (stretchSpriteToFit)
+        {
+            // Растягиваем спрайт, ТОЛЬКО если выключен авто-размер по контенту
+            ResizeVisualsToFit();
+        }
         ResizeCollider();
         SnapToGridEditor();
         EnforceStructurePosition();
@@ -113,7 +140,28 @@ public class BlockController : MonoBehaviour
 
     private void OnMouseDown()
     {
+
+
+
         if (!Application.isPlaying) return;
+
+        if (isPaletteItem)
+        {
+            // 1. Превращаемся в обычный блок
+            isPaletteItem = false;
+
+            if (myPalette != null)
+            {
+                // Говорим палитре: "Удали меня из списка инвентаря"
+                myPalette.OnBlockTakenFromPalette(this);
+            }
+
+            // 3. Отключаем привязку к родителю (чтобы не двигаться за камерой/палитрой)
+            transform.SetParent(null);
+
+            // 4. Сбрасываем масштаб (если в палитре он был уменьшен)
+            transform.localScale = Vector3.one;
+        }
 
         isDragging = true;
 
@@ -127,17 +175,63 @@ public class BlockController : MonoBehaviour
         dragOffset = transform.position - mousePos;
     }
 
+    public void InitializeAsPaletteItem(BlockPalette palette, int slotIndex)
+    {
+        isPaletteItem = true;
+        myPalette = palette;
+        myPaletteSlotIndex = slotIndex;
+        //transform.localPosition = transform.localPosition + new Vector3(0, 0, 1);
+
+        // Отключаем физику и триггеры, чтобы блок в меню не взаимодействовал с миром
+         // Коллайдер нужен для клика мышкой!
+        //if (rb2D) rb2D.simulated = false;
+        //if (collider2D) collider2D.enabled = true;
+
+        // Можно сделать его чуть меньше для красоты
+        //transform.localScale = Vector3.one * 0.5f; 
+    }
+
+    private BlockPalette CheckForPaletteDrop()
+    {
+        // Проверяем точку под центром блока или под мышкой
+        Collider2D[] hits = Physics2D.OverlapPointAll(transform.position);
+
+        foreach (var hit in hits)
+        {
+            // Пытаемся найти компонент палитры на том, во что врезались
+            BlockPalette palette = hit.GetComponent<BlockPalette>();
+            if (palette != null) return palette;
+        }
+        return null;
+    }
     private void OnMouseUp()
     {
         if (!Application.isPlaying) return;
 
         isDragging = false;
+        BlockPalette palette = CheckForPaletteDrop();
+        if (palette != null)
+        {
+            if (linkedSlot != null)
+            {
+                linkedSlot.Deoccupy();
+                linkedSlot = null;
+            }
+
+            Debug.Log($"<color=cyan>[RETURN]</color> Returning to palette.");
+            palette.ReturnBlockToPalette(this);
+            return; // Прерываем выполнение, блок ушел в палитру
+        }
 
         // ЛОГИКА ПРИЛИПАНИЯ К СЛОТУ
         EmptyController bestSlot = GetNearestValidSlot();
 
-        if (bestSlot != null)
+        if (bestSlot != null && bestSlot.sizeInCells.Equals(sizeInCells) && !bestSlot.IsOccupied)
         {
+            if (linkedSlot != null)
+                linkedSlot.Deoccupy();
+            bestSlot.Occupy(this);
+            linkedSlot = bestSlot;
             // Слот найден! Прилипаем к нему
             transform.position = bestSlot.transform.position;
 
@@ -151,6 +245,12 @@ public class BlockController : MonoBehaviour
             // Слот не найден! Возвращаемся домой
             transform.position = startDragPosition;
             Debug.Log($"<color=yellow>[RETURN]</color> No valid slot found. Returning to start.");
+
+            if (linkedSlot == null)
+            {
+                Debug.Log($"<color=cyan>[RETURN]</color> Returning to palette.");
+                BlockPalette.Instance.ReturnBlockToPalette(this);
+            }
         }
     }
 
@@ -240,11 +340,15 @@ public class BlockController : MonoBehaviour
     private void FullRefresh()
     {
         RefreshStructures();
-        ApplyStructureVisibility();
+        //ApplyStructureVisibility();
         if (autoSizeToContent) ResizeSizeInCellsToFitContent();
         ResizeCollider();
         SnapToGridEditor();
         EnforceStructurePosition();
+        if (stretchSpriteToFit)
+        {
+            ResizeVisualsToFit();
+        }
     }
 
     private void ResizeCollider()
@@ -372,6 +476,54 @@ public class BlockController : MonoBehaviour
         FullRefresh();
     }
     #endregion
+    private void ResizeVisualsToFit()
+    {
+        if (LevelController.Instance == null || structures.Count == 0) return;
+        if (selectedStructureIndex >= structures.Count) selectedStructureIndex = 0;
+
+        GameObject active = structures[selectedStructureIndex];
+        if (!active) return;
+
+        // 1. Вычисляем требуемый размер в юнитах
+        Vector2 modSize = LevelController.Instance.CurrentModuleSize;
+        Vector2 targetSize = new Vector2(sizeInCells.x * modSize.x, sizeInCells.y * modSize.y);
+
+        foreach( var jopa in GetComponentsInChildren<TMP_Text>())
+            jopa.rectTransform.sizeDelta = targetSize;
+
+        foreach (var e in structures)
+        {
+            SpriteRenderer[] renderers = e.GetComponentsInChildren<SpriteRenderer>();
+
+            foreach (var sr in renderers)
+            {
+                if (sr.drawMode == SpriteDrawMode.Simple)
+                {
+                    // Режим Simple: растягиваем через Scale
+                    if (sr.sprite == null) continue;
+
+                    // Сбрасываем скейл, чтобы корректно посчитать пропорцию
+                    sr.transform.localScale = Vector3.one;
+
+                    Vector2 spriteSize = sr.sprite.bounds.size;
+                    if (spriteSize.x == 0 || spriteSize.y == 0) continue;
+
+                    Vector3 newScale = new Vector3(
+                        targetSize.x / spriteSize.x,
+                        targetSize.y / spriteSize.y,
+                        1f
+                    );
+                    sr.transform.localScale = newScale;
+                }
+                else
+                {
+                    // Режим Sliced/Tiled: меняем размер поля Size
+                    sr.size = targetSize;
+                    sr.transform.localScale = Vector3.one;
+                }
+            }
+        }
+    }
 
     private void OnDrawGizmosSelected()
     {
