@@ -60,6 +60,19 @@ public class EmptyController : MonoBehaviour
         ResizeCollider();
         SnapToGrid();
     }
+    public void Occupy(BlockController block)
+    {
+        if (IsOccupied) return;
+        LevelController.Instance.Verify();
+        IsOccupied = true;
+        linkedBlock = block;
+    }
+
+    public void Deoccupy()
+    {
+        IsOccupied = false;
+        linkedBlock = null;
+    }
 
     // --- Логику столкновений обрабатывает BlockController, 
     // но если вам нужно что-то специфичное для слота, пишите сюда. ---
@@ -134,20 +147,6 @@ public class EmptyController : MonoBehaviour
         gridPosition = LevelController.Instance.WorldToGrid(bottomLeft);
         if(Vector2.Distance(tmp, gridPosition) > 0.01f)
             EditorUtility.SetDirty(this);
-    }
-
-    public void Occupy(BlockController block)
-    {
-        if(IsOccupied) return;
-        LevelController.Instance.Verify();
-        IsOccupied = true;
-        linkedBlock = block;
-    }
-
-    public void Deoccupy()
-    {
-        IsOccupied = false;
-        linkedBlock = null;
     }
 
 
